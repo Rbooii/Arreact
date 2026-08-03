@@ -32,6 +32,18 @@ function render(container, obj) {
     }
     container.appendChild(dom);
 }
+let nextUnitOfWork = null;
+function workLoop(deadline) {
+    let shouldYield = false;
+    while (nextUnitOfWork && !shouldYield) {
+        nextUnitOfWork = performUnitofWork(nextUnitOfWork);
+        shouldYield = deadline.timeRemaining() < 1;
+    }
+    requestIdleCallback(workLoop);
+}
+requestIdleCallback(workLoop);
+function performUnitofWork(nextUnitOfWork) {
+}
 export const Arreact = {
     createElement,
     createTextElement,
