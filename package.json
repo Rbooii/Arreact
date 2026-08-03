@@ -1,0 +1,21 @@
+{
+  "name": "arco-react",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc",
+    "watch:ts": "tsc --watch --preserveWatchOutput",
+    "watch:serve": "npx serve . -l 5173",
+    "dev": "npm run clean && concurrently -n tsc,serve -c blue,green \"npm:watch:ts\" \"npm:watch:serve\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^10.0.4",
+    "typescript": "^7.0.2"
+  }
+}
