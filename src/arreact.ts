@@ -8,6 +8,15 @@ interface ArreactProps {
     children:ArreactElement[];
 }
 
+interface WorkUnit {
+    type ?: string;
+    dom : Text|HTMLElement|null;
+    props : ArreactProps;
+    parent ?: WorkUnit;
+    child ?: WorkUnit;
+    sibling ?: WorkUnit;
+}
+
 function createElement(
     type:string,
     props: Record<string, any> | null,
@@ -35,10 +44,13 @@ function createTextElement(t:string|number):ArreactElement
     }
 }
 
-function render(container:HTMLElement|Text, obj:ArreactElement){
-    const dom = (obj.type === "TEXT_ELEMENT") ? 
+function createDOM(obj:WorkUnit){
+    let dom:Text|HTMLElement|null = null;
+    if(obj.type){
+        dom = (obj.type === "TEXT_ELEMENT") ? 
         document.createTextNode("") :
-        document.createElement(obj.type);
+        document.createElement(obj.type!);
+    }
 
     const isProperty = (key:string) => key !== "children";
     Object.keys(obj.props)
@@ -46,16 +58,52 @@ function render(container:HTMLElement|Text, obj:ArreactElement){
         .forEach(x => {
             (dom as any)[x] = obj.props[x];
         })
-
-    for(let i = 0; i < obj.props.children.length; i++){
-        const child = obj.props.children[i];
-        render(dom, child);
-    }
-    container.appendChild(dom);
+    return dom;
 }
 
-let nextUnitOfWork = null;
-function workLoop(deadline){
+function performUnitofWork(fiber:WorkUnit){
+    if(!fiber.dom){
+        fiber.dom = createDOM(fiber);
+    }
+    if(fiber.parent && fiber.parent.dom && fiber.dom){
+        fiber.parent.dom.appendChild(fiber.dom);
+    }
+    const elements = fiber.props.children;
+    let idx = 0;
+    let prevsib:WorkUnit|null = null;
+    while(idx < elements.length){
+        const e = elements[idx];
+        const newFib:WorkUnit = {
+            type:e.type,
+            dom:null,
+            parent:fiber,
+            props:e.props
+        }
+        if(idx === 0){
+            fiber.child = newFib;
+        }else if(prevsib){
+            prevsib.sibling = newFib;
+        }
+        prevsib = newFib;
+        idx++;
+    }
+    if(fiber.child){
+        return fiber.child;
+    }
+    let nextFiber:WorkUnit|undefined = fiber;
+    while(nextFiber){
+        if(nextFiber.sibling){
+            return nextFiber.sibling;
+        }
+        nextFiber = nextFiber.parent;
+    }
+    return null;
+}
+
+requestIdleCallback(workLoop);
+
+let nextUnitOfWork:WorkUnit|null = null;
+function workLoop(deadline:IdleDeadline){
     let shouldYield:boolean = false;
     while(nextUnitOfWork && !shouldYield){
         nextUnitOfWork = performUnitofWork(nextUnitOfWork);
@@ -64,10 +112,13 @@ function workLoop(deadline){
     requestIdleCallback(workLoop);
 }
 
-requestIdleCallback(workLoop);
-
-function performUnitofWork(nextUnitOfWork){
-
+function render(container:HTMLElement|Text, obj:ArreactElement){
+    nextUnitOfWork = {
+        dom : container,
+        props : {
+            children : [obj]
+        }
+    }
 }
 
 export const Arreact = {
