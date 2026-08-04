@@ -10,10 +10,7 @@ function Secondary({x}:{x:string}){
 function Main(){
     return (
         <div className="geist-normal p-10">
-            <h1>Hello ini title!</h1>
-            <p>ini paragraph!</p>
-            <p>This is a very simple testtt</p>
-            <button onClick={() => {console.log("hi")}}>test</button>
+            <h1>Hello from Arreact!</h1>
             <Secondary x="test"/>
         </div>
     )

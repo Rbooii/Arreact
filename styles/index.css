@@ -13,3 +13,12 @@
 .p-10 {
     padding: 50px;
 }
+
+.button {
+    padding-inline: 20px;
+    padding-block: 8px;
+    font-size: large;
+    background-color: black;
+    color: white;
+    border-radius: 32px;
+}

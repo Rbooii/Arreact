@@ -18,7 +18,7 @@ function createTextElement(t) {
 }
 function createDOM(obj) {
     let dom = null;
-    if (obj.type) {
+    if (obj.type && !(typeof obj.type === "function")) {
         dom = (obj.type === "TEXT_ELEMENT") ?
             document.createTextNode("") :
             document.createElement(obj.type);
@@ -28,15 +28,26 @@ function createDOM(obj) {
     }
     return dom;
 }
-function performUnitofWork(fiber) {
+function UpdateFunctionComponent(fiber) {
+    if (fiber.type && fiber.type instanceof Function) {
+        const children = [fiber.type(fiber.props)];
+        reconcileChildren(fiber, children);
+    }
+}
+function UpdateHostComponent(fiber) {
     if (!fiber.dom) {
         fiber.dom = createDOM(fiber);
     }
-    // if(fiber.parent && fiber.parent.dom && fiber.dom){
-    //     fiber.parent.dom.appendChild(fiber.dom);
-    // }
-    const elements = fiber.props.children;
-    reconcileChildren(fiber, elements);
+    reconcileChildren(fiber, fiber.props.children);
+}
+function performUnitofWork(fiber) {
+    const isFunc = fiber.type instanceof Function;
+    if (isFunc) {
+        UpdateFunctionComponent(fiber);
+    }
+    else {
+        UpdateHostComponent(fiber);
+    }
     if (fiber.child) {
         return fiber.child;
     }
@@ -150,17 +161,33 @@ function updateDOM(dom, prevProps, nextProps) {
         dom.addEventListener(eventType, nextProps[name]);
     });
 }
+function commitDeletion(fiber, domParent) {
+    if (!fiber)
+        return;
+    if (fiber.dom) {
+        domParent.removeChild(fiber.dom);
+    }
+    else {
+        commitDeletion(fiber.child, domParent);
+    }
+}
 function commitWork(fiber) {
     if (fiber) {
-        const domParent = fiber.parent?.dom;
-        if (fiber.effectTag === "PLACEMENT" && fiber.dom && domParent) {
-            domParent.appendChild(fiber.dom);
+        let domParentFiber = fiber.parent;
+        while (domParentFiber && !domParentFiber.dom) {
+            domParentFiber = domParentFiber.parent;
         }
-        else if (fiber.effectTag === "DELETION" && fiber.dom && domParent) {
-            domParent.removeChild(fiber.dom);
-        }
-        else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
-            updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
+        if (domParentFiber && domParentFiber.dom) {
+            const domParent = domParentFiber.dom;
+            if (fiber.effectTag === "PLACEMENT" && fiber.dom) {
+                domParent.appendChild(fiber.dom);
+            }
+            else if (fiber.effectTag === "DELETION" && fiber.dom) {
+                commitDeletion(fiber, domParent);
+            }
+            else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
+                updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
+            }
         }
         commitWork(fiber.child);
         commitWork(fiber.sibling);

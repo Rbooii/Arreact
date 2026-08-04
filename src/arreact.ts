@@ -1,15 +1,14 @@
+type ComponentFunction = (props:ArreactProps) => ArreactElement;
 interface ArreactElement {
-    type: string;
+    type: string | ComponentFunction;
     props: ArreactProps;
 }
-
 interface ArreactProps {
     [key: string]: any;
     children: ArreactElement[];
 }
-
 interface WorkUnit {
-    type?: string;
+    type?: string | ComponentFunction;
     dom: Text | HTMLElement | null;
     props: ArreactProps;
     parent?: WorkUnit;
@@ -20,7 +19,7 @@ interface WorkUnit {
 }
 
 function createElement(
-    type: string,
+    type: string | ComponentFunction,
     props: Record<string, any> | null,
     ...children: any[]
 ): ArreactElement {
@@ -47,28 +46,39 @@ function createTextElement(t: string | number): ArreactElement {
 
 function createDOM(obj: WorkUnit) {
     let dom: Text | HTMLElement | null = null;
-    if (obj.type) {
+    if (obj.type && !(typeof obj.type === "function")) {
         dom = (obj.type === "TEXT_ELEMENT") ?
             document.createTextNode("") :
             document.createElement(obj.type!);
     }
-
-    if(dom){
-        updateDOM(dom, { children : []}, obj.props);
+    if (dom) {
+        updateDOM(dom, { children: [] }, obj.props);
     }
-    
     return dom;
 }
 
-function performUnitofWork(fiber: WorkUnit) {
+function UpdateFunctionComponent(fiber: WorkUnit) {
+    if (fiber.type && fiber.type instanceof Function) {
+        const children = [fiber.type(fiber.props)]
+        reconcileChildren(fiber, children);
+    }
+}
+
+function UpdateHostComponent(fiber: WorkUnit) {
     if (!fiber.dom) {
         fiber.dom = createDOM(fiber);
     }
-    // if(fiber.parent && fiber.parent.dom && fiber.dom){
-    //     fiber.parent.dom.appendChild(fiber.dom);
-    // }
-    const elements = fiber.props.children;
-    reconcileChildren(fiber, elements);
+    reconcileChildren(fiber, fiber.props.children);
+}
+
+function performUnitofWork(fiber: WorkUnit) {
+    const isFunc = fiber.type instanceof Function;
+
+    if (isFunc) {
+        UpdateFunctionComponent(fiber);
+    } else {
+        UpdateHostComponent(fiber);
+    }
 
     if (fiber.child) {
         return fiber.child;
@@ -102,7 +112,6 @@ function reconcileChildren(fiber: WorkUnit, elements: ArreactElement[]) {
                 effectTag: "UPDATE",
             }
         }
-
         if (e && !sameType) {
             newFiber = {
                 type: e.type,
@@ -113,13 +122,11 @@ function reconcileChildren(fiber: WorkUnit, elements: ArreactElement[]) {
                 effectTag: "PLACEMENT",
             }
         }
-
         if (oldFiber && !sameType && deletions) {
             // delete node
             oldFiber.effectTag = "DELETION";
             deletions.push(oldFiber);
         }
-
         if (oldFiber) {
             oldFiber = oldFiber.sibling
         }
@@ -152,8 +159,8 @@ function commitRoot() {
 
 const isEvent = (key: string) => key.startsWith("on")
 const isProperty = (key: string) => key !== "children" && !isEvent(key)
-const isNew = (prev:ArreactProps, next:ArreactProps) => (key: string) => prev[key] !== next[key]
-const isGone = (prev:ArreactProps, next:ArreactProps) => (key: string) => !(key in next)
+const isNew = (prev: ArreactProps, next: ArreactProps) => (key: string) => prev[key] !== next[key]
+const isGone = (prev: ArreactProps, next: ArreactProps) => (key: string) => !(key in next)
 
 function updateDOM(dom: Text | HTMLElement, prevProps: ArreactProps, nextProps: ArreactProps) {
     //Remove old or changed event listeners
@@ -205,20 +212,34 @@ function updateDOM(dom: Text | HTMLElement, prevProps: ArreactProps, nextProps: 
         })
 }
 
+function commitDeletion(fiber: WorkUnit | null | undefined, domParent: Text | HTMLElement) {
+    if (!fiber) return;
+    if (fiber.dom) {
+        domParent.removeChild(fiber.dom);
+    } else {
+        commitDeletion(fiber.child, domParent);
+    }
+}
+
 function commitWork(fiber: WorkUnit | null | undefined) {
     if (fiber) {
-        const domParent = fiber.parent?.dom;
-        if (fiber.effectTag === "PLACEMENT" && fiber.dom && domParent) {
-            domParent.appendChild(fiber.dom)
-        } else if (fiber.effectTag === "DELETION" && fiber.dom && domParent) {
-            domParent.removeChild(fiber.dom);
-        } else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
-            updateDOM(
-                fiber.dom,
-                fiber.alternate.props,
-                fiber.props
-            )
+        let domParentFiber = fiber.parent;
+        while (domParentFiber && !domParentFiber.dom) {
+            domParentFiber = domParentFiber.parent;
         }
+
+        if (domParentFiber && domParentFiber.dom) {
+            const domParent = domParentFiber.dom;
+
+            if (fiber.effectTag === "PLACEMENT" && fiber.dom) {
+                domParent.appendChild(fiber.dom);
+            } else if (fiber.effectTag === "DELETION" && fiber.dom) {
+                commitDeletion(fiber, domParent);
+            } else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
+                updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
+            }
+        }
+
         commitWork(fiber.child);
         commitWork(fiber.sibling);
     }
