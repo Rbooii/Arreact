@@ -1,0 +1,15 @@
+*, body {
+    padding : 0px;
+    margin: 0px;
+}
+
+.geist-normal {
+  font-family: "Geist", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.p-10 {
+    padding: 50px;
+}

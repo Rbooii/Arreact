@@ -12,6 +12,7 @@ declare namespace JSX {
     p: CommonProps;
     li: CommonProps;
     ul: CommonProps;
+    button: CommonProps;
     [elemName: string]: any; 
   }
 }

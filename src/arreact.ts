@@ -1,27 +1,29 @@
 interface ArreactElement {
-    type:string;
-    props:ArreactProps;
+    type: string;
+    props: ArreactProps;
 }
 
 interface ArreactProps {
-    [key:string]:any;
-    children:ArreactElement[];
+    [key: string]: any;
+    children: ArreactElement[];
 }
 
 interface WorkUnit {
-    type ?: string;
-    dom : Text|HTMLElement|null;
-    props : ArreactProps;
-    parent ?: WorkUnit;
-    child ?: WorkUnit;
-    sibling ?: WorkUnit;
+    type?: string;
+    dom: Text | HTMLElement | null;
+    props: ArreactProps;
+    parent?: WorkUnit;
+    child?: WorkUnit | null;
+    sibling?: WorkUnit | null;
+    alternate?: WorkUnit | null;
+    effectTag?: string;
 }
 
 function createElement(
-    type:string,
+    type: string,
     props: Record<string, any> | null,
     ...children: any[]
-):ArreactElement{
+): ArreactElement {
     return {
         type,
         props: {
@@ -33,66 +35,47 @@ function createElement(
     }
 }
 
-function createTextElement(t:string|number):ArreactElement
-{
+function createTextElement(t: string | number): ArreactElement {
     return {
         type: "TEXT_ELEMENT",
         props: {
-            nodeValue:t,
-            children:[]
+            nodeValue: t,
+            children: []
         }
     }
 }
 
-function createDOM(obj:WorkUnit){
-    let dom:Text|HTMLElement|null = null;
-    if(obj.type){
-        dom = (obj.type === "TEXT_ELEMENT") ? 
-        document.createTextNode("") :
-        document.createElement(obj.type!);
+function createDOM(obj: WorkUnit) {
+    let dom: Text | HTMLElement | null = null;
+    if (obj.type) {
+        dom = (obj.type === "TEXT_ELEMENT") ?
+            document.createTextNode("") :
+            document.createElement(obj.type!);
     }
 
-    const isProperty = (key:string) => key !== "children";
-    Object.keys(obj.props)
-        .filter(isProperty)
-        .forEach(x => {
-            (dom as any)[x] = obj.props[x];
-        })
+    if(dom){
+        updateDOM(dom, { children : []}, obj.props);
+    }
+    
     return dom;
 }
 
-function performUnitofWork(fiber:WorkUnit){
-    if(!fiber.dom){
+function performUnitofWork(fiber: WorkUnit) {
+    if (!fiber.dom) {
         fiber.dom = createDOM(fiber);
     }
-    if(fiber.parent && fiber.parent.dom && fiber.dom){
-        fiber.parent.dom.appendChild(fiber.dom);
-    }
+    // if(fiber.parent && fiber.parent.dom && fiber.dom){
+    //     fiber.parent.dom.appendChild(fiber.dom);
+    // }
     const elements = fiber.props.children;
-    let idx = 0;
-    let prevsib:WorkUnit|null = null;
-    while(idx < elements.length){
-        const e = elements[idx];
-        const newFib:WorkUnit = {
-            type:e.type,
-            dom:null,
-            parent:fiber,
-            props:e.props
-        }
-        if(idx === 0){
-            fiber.child = newFib;
-        }else if(prevsib){
-            prevsib.sibling = newFib;
-        }
-        prevsib = newFib;
-        idx++;
-    }
-    if(fiber.child){
+    reconcileChildren(fiber, elements);
+
+    if (fiber.child) {
         return fiber.child;
     }
-    let nextFiber:WorkUnit|undefined = fiber;
-    while(nextFiber){
-        if(nextFiber.sibling){
+    let nextFiber: WorkUnit | undefined = fiber;
+    while (nextFiber) {
+        if (nextFiber.sibling) {
             return nextFiber.sibling;
         }
         nextFiber = nextFiber.parent;
@@ -100,25 +83,169 @@ function performUnitofWork(fiber:WorkUnit){
     return null;
 }
 
+function reconcileChildren(fiber: WorkUnit, elements: ArreactElement[]) {
+    let idx = 0;
+    let oldFiber = fiber.alternate && fiber.alternate.child;
+    let prevsib: WorkUnit | null = null;
+    while (idx < elements.length || oldFiber != null) {
+        const e = elements[idx];
+        let newFiber: WorkUnit | null = null;
+        //comparing oldFib to element
+        const sameType = oldFiber && e && e.type === oldFiber.type;
+        if (sameType && oldFiber) {
+            newFiber = {
+                type: oldFiber.type,
+                props: e.props,
+                dom: oldFiber.dom,
+                parent: fiber,
+                alternate: oldFiber,
+                effectTag: "UPDATE",
+            }
+        }
+
+        if (e && !sameType) {
+            newFiber = {
+                type: e.type,
+                props: e.props,
+                dom: null,
+                parent: fiber,
+                alternate: null,
+                effectTag: "PLACEMENT",
+            }
+        }
+
+        if (oldFiber && !sameType && deletions) {
+            // delete node
+            oldFiber.effectTag = "DELETION";
+            deletions.push(oldFiber);
+        }
+
+        if (oldFiber) {
+            oldFiber = oldFiber.sibling
+        }
+        if (idx === 0) {
+            fiber.child = newFiber
+        } else if (e && prevsib) {
+            prevsib.sibling = newFiber
+        }
+        prevsib = newFiber
+        idx++
+    }
+
+}
+
 requestIdleCallback(workLoop);
 
-let nextUnitOfWork:WorkUnit|null = null;
-function workLoop(deadline:IdleDeadline){
-    let shouldYield:boolean = false;
-    while(nextUnitOfWork && !shouldYield){
+let nextUnitOfWork: WorkUnit | null = null;
+let workInProgressRoot: WorkUnit | null = null;
+let currentRoot: WorkUnit | null = null;
+let deletions: WorkUnit[] | null = null;
+
+function commitRoot() {
+    deletions?.forEach(commitWork);
+    if (workInProgressRoot && workInProgressRoot.child) {
+        commitWork(workInProgressRoot.child);
+        currentRoot = workInProgressRoot;
+    }
+    workInProgressRoot = null;
+}
+
+const isEvent = (key: string) => key.startsWith("on")
+const isProperty = (key: string) => key !== "children" && !isEvent(key)
+const isNew = (prev:ArreactProps, next:ArreactProps) => (key: string) => prev[key] !== next[key]
+const isGone = (prev:ArreactProps, next:ArreactProps) => (key: string) => !(key in next)
+
+function updateDOM(dom: Text | HTMLElement, prevProps: ArreactProps, nextProps: ArreactProps) {
+    //Remove old or changed event listeners
+    Object.keys(prevProps)
+        .filter(isEvent)
+        .filter(
+            key =>
+                !(key in nextProps) ||
+                isNew(prevProps, nextProps)(key)
+        )
+        .forEach(name => {
+            const eventType = name
+                .toLowerCase()
+                .substring(2)
+            dom.removeEventListener(
+                eventType,
+                prevProps[name]
+            )
+        })
+
+    // Remove old properties
+    Object.keys(prevProps)
+        .filter(isProperty)
+        .filter(isGone(prevProps, nextProps))
+        .forEach(name => {
+            (dom as any)[name] = ""
+        })
+
+    // Set new or changed properties
+    Object.keys(nextProps)
+        .filter(isProperty)
+        .filter(isNew(prevProps, nextProps))
+        .forEach(name => {
+            (dom as any)[name] = nextProps[name]
+        })
+
+    // Add event listeners
+    Object.keys(nextProps)
+        .filter(isEvent)
+        .filter(isNew(prevProps, nextProps))
+        .forEach(name => {
+            const eventType = name
+                .toLowerCase()
+                .substring(2)
+            dom.addEventListener(
+                eventType,
+                nextProps[name]
+            )
+        })
+}
+
+function commitWork(fiber: WorkUnit | null | undefined) {
+    if (fiber) {
+        const domParent = fiber.parent?.dom;
+        if (fiber.effectTag === "PLACEMENT" && fiber.dom && domParent) {
+            domParent.appendChild(fiber.dom)
+        } else if (fiber.effectTag === "DELETION" && fiber.dom && domParent) {
+            domParent.removeChild(fiber.dom);
+        } else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
+            updateDOM(
+                fiber.dom,
+                fiber.alternate.props,
+                fiber.props
+            )
+        }
+        commitWork(fiber.child);
+        commitWork(fiber.sibling);
+    }
+}
+
+function workLoop(deadline: IdleDeadline) {
+    let shouldYield: boolean = false;
+    while (nextUnitOfWork && !shouldYield) {
         nextUnitOfWork = performUnitofWork(nextUnitOfWork);
         shouldYield = deadline.timeRemaining() < 1;
+    }
+    if (!nextUnitOfWork && workInProgressRoot) {
+        commitRoot();
     }
     requestIdleCallback(workLoop);
 }
 
-function render(container:HTMLElement|Text, obj:ArreactElement){
-    nextUnitOfWork = {
-        dom : container,
-        props : {
-            children : [obj]
-        }
+function render(container: HTMLElement | Text, obj: ArreactElement) {
+    workInProgressRoot = {
+        dom: container,
+        props: {
+            children: [obj]
+        },
+        alternate: currentRoot
     }
+    deletions = [];
+    nextUnitOfWork = workInProgressRoot;
 }
 
 export const Arreact = {
