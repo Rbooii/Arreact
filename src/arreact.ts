@@ -1,6 +1,6 @@
-type ComponentFunction = (props:ArreactProps) => ArreactElement;
+type ComponentFunction<P = any> = (props: P) => ArreactElement;
 interface ArreactElement {
-    type: string | ComponentFunction;
+    type: string | ComponentFunction<any>;
     props: ArreactProps;
 }
 interface ArreactProps {
@@ -16,22 +16,35 @@ interface WorkUnit {
     sibling?: WorkUnit | null;
     alternate?: WorkUnit | null;
     effectTag?: string;
+    hooks?: any;
 }
 
+//overload signatures
+function createElement<P extends object>(
+    type: ComponentFunction<P>,
+    props: P | null,
+    ...children: any[]
+): ArreactElement;
 function createElement(
-    type: string | ComponentFunction,
+    type: string,
     props: Record<string, any> | null,
+    ...children: any[]
+): ArreactElement;
+
+function createElement(
+    type: any,
+    props: any,
     ...children: any[]
 ): ArreactElement {
     return {
         type,
         props: {
             ...props,
-            children: children.map((c) => (
+            children: children.map((c) =>
                 typeof c === "object" ? c : createTextElement(c)
-            ))
-        }
-    }
+            ),
+        },
+    };
 }
 
 function createTextElement(t: string | number): ArreactElement {
@@ -57,12 +70,66 @@ function createDOM(obj: WorkUnit) {
     return dom;
 }
 
+
+let wipFiber: WorkUnit | null = null;
+let hookIndex: number | null = null;
+
 function UpdateFunctionComponent(fiber: WorkUnit) {
     if (fiber.type && fiber.type instanceof Function) {
+        wipFiber = fiber;
+        hookIndex = 0;
+        wipFiber.hooks = [];
         const children = [fiber.type(fiber.props)]
         reconcileChildren(fiber, children);
     }
 }
+function useState<T>(
+    initial: T
+): [T, (action: T | ((prev: T) => T)) => void] {
+    const hook: { state: T; queue: ((prev: T) => T)[] } = {
+        state: initial,
+        queue: [],
+    };
+
+    if (wipFiber && hookIndex !== null) {
+        const oldHook =
+            wipFiber.alternate &&
+            wipFiber.alternate.hooks &&
+            wipFiber.alternate.hooks[hookIndex];
+
+        hook.state = oldHook ? oldHook.state : initial;
+
+        const actions: ((prev: T) => T)[] = oldHook ? oldHook.queue : [];
+        actions.forEach((action) => {
+            hook.state = action(hook.state);
+        });
+
+        const setState = (action: T | ((prev: T) => T)) => {
+            if (currentRoot) {
+                hook.queue.push(
+                    typeof action === "function"
+                        ? (action as (prev: T) => T)
+                        : () => action
+                );
+                workInProgressRoot = {
+                    dom: currentRoot.dom,
+                    props: currentRoot.props,
+                    alternate: currentRoot,
+                };
+                nextUnitOfWork = workInProgressRoot;
+                deletions = [];
+            }
+        };
+
+        wipFiber.hooks!.push(hook);
+        hookIndex++;
+        return [hook.state, setState];
+    }
+
+    // fallback kalau dipanggil di luar render (jarang kejadian, tapi TS wajib punya return path)
+    return [initial, () => {}];
+}
+
 
 function UpdateHostComponent(fiber: WorkUnit) {
     if (!fiber.dom) {
@@ -269,8 +336,11 @@ function render(container: HTMLElement | Text, obj: ArreactElement) {
     nextUnitOfWork = workInProgressRoot;
 }
 
+
+
 export const Arreact = {
     createElement,
     createTextElement,
-    render
+    render,
+    useState
 }

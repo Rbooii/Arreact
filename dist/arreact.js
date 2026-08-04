@@ -3,8 +3,8 @@ function createElement(type, props, ...children) {
         type,
         props: {
             ...props,
-            children: children.map((c) => (typeof c === "object" ? c : createTextElement(c)))
-        }
+            children: children.map((c) => typeof c === "object" ? c : createTextElement(c)),
+        },
     };
 }
 function createTextElement(t) {
@@ -28,11 +28,51 @@ function createDOM(obj) {
     }
     return dom;
 }
+let wipFiber = null;
+let hookIndex = null;
 function UpdateFunctionComponent(fiber) {
     if (fiber.type && fiber.type instanceof Function) {
+        wipFiber = fiber;
+        hookIndex = 0;
+        wipFiber.hooks = [];
         const children = [fiber.type(fiber.props)];
         reconcileChildren(fiber, children);
     }
+}
+function useState(initial) {
+    const hook = {
+        state: initial,
+        queue: [],
+    };
+    if (wipFiber && hookIndex !== null) {
+        const oldHook = wipFiber.alternate &&
+            wipFiber.alternate.hooks &&
+            wipFiber.alternate.hooks[hookIndex];
+        hook.state = oldHook ? oldHook.state : initial;
+        const actions = oldHook ? oldHook.queue : [];
+        actions.forEach((action) => {
+            hook.state = action(hook.state);
+        });
+        const setState = (action) => {
+            if (currentRoot) {
+                hook.queue.push(typeof action === "function"
+                    ? action
+                    : () => action);
+                workInProgressRoot = {
+                    dom: currentRoot.dom,
+                    props: currentRoot.props,
+                    alternate: currentRoot,
+                };
+                nextUnitOfWork = workInProgressRoot;
+                deletions = [];
+            }
+        };
+        wipFiber.hooks.push(hook);
+        hookIndex++;
+        return [hook.state, setState];
+    }
+    // fallback kalau dipanggil di luar render (jarang kejadian, tapi TS wajib punya return path)
+    return [initial, () => { }];
 }
 function UpdateHostComponent(fiber) {
     if (!fiber.dom) {
@@ -218,5 +258,6 @@ function render(container, obj) {
 export const Arreact = {
     createElement,
     createTextElement,
-    render
+    render,
+    useState
 };

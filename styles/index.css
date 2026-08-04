@@ -22,3 +22,22 @@
     color: white;
     border-radius: 32px;
 }
+
+.counter-wrap {
+    margin-top: 30px;
+    text-align: center;
+    border: .5px solid #2c2c2c;
+    border-radius: 20px;
+    padding: 15px;
+    width: fit-content;
+    height: fit-content;
+}
+
+.counter-btn-wrap{
+    margin-left: auto;
+    margin-right: auto;
+    width: fit-content;
+    height: fit-content;
+    display: flex;
+    gap: 10px;
+}
