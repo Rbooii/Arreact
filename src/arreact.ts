@@ -1,5 +1,5 @@
 type ComponentFunction<P = any> = (props: P) => ArreactElement;
-interface ArreactElement {
+export interface ArreactElement {
     type: string | ComponentFunction<any>;
     props: ArreactProps;
 }
@@ -230,7 +230,6 @@ const isNew = (prev: ArreactProps, next: ArreactProps) => (key: string) => prev[
 const isGone = (prev: ArreactProps, next: ArreactProps) => (key: string) => !(key in next)
 
 function updateDOM(dom: Text | HTMLElement, prevProps: ArreactProps, nextProps: ArreactProps) {
-    //Remove old or changed event listeners
     Object.keys(prevProps)
         .filter(isEvent)
         .filter(
