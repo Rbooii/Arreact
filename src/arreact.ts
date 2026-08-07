@@ -4,6 +4,7 @@ import { performUnitofWork } from "./utils/fiber.js";
 import { fiberState } from "./utils/state.js";
 import { useState } from "./hooks/useState.js";
 import { ArreactElement } from "./utils/types.js";
+import { useEffect } from "./hooks/useEffect.js";
 
 requestIdleCallback(workLoop);
 
@@ -36,5 +37,6 @@ export const Arreact = {
     createElement,
     createTextElement,
     render,
-    useState
+    useState,
+    useEffect
 }

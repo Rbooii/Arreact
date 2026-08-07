@@ -18,4 +18,11 @@ export interface WorkUnit {
     alternate?: WorkUnit | null;
     effectTag?: string;
     hooks?: any;
+    effectHooks?: EffectHook[];
+}
+export interface EffectHook {
+    effect : () => (() => void) | void;
+    cleanup ?: () => void;
+    deps ?: any[];
+    tag : "RUN" | "SKIP";
 }

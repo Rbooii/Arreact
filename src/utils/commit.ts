@@ -6,9 +6,38 @@ export function commitRoot() {
     fiberState.deletions?.forEach(commitWork);
     if (fiberState.workInProgressRoot && fiberState.workInProgressRoot.child) {
         commitWork(fiberState.workInProgressRoot.child);
+        commitEffects(fiberState.workInProgressRoot.child);
         fiberState.currentRoot = fiberState.workInProgressRoot;
     }
     fiberState.workInProgressRoot = null;
+
+    // Ada setState yang numpuk selagi render ini berlangsung — proses
+    // sebagai satu render susulan sekarang bahwa currentRoot sudah fresh.
+    if (fiberState.pendingRender && fiberState.currentRoot) {
+        fiberState.pendingRender = false;
+        fiberState.workInProgressRoot = {
+            dom: fiberState.currentRoot.dom,
+            props: fiberState.currentRoot.props,
+            alternate: fiberState.currentRoot,
+        };
+        fiberState.nextUnitOfWork = fiberState.workInProgressRoot;
+        fiberState.deletions = [];
+    }
+}
+
+function commitEffects(fiber: WorkUnit | null | undefined){
+    if(!fiber) return;
+    if (fiber.effectHooks) {
+        fiber.effectHooks.forEach((hook) => {
+            if (hook.tag === "RUN") {
+                hook.cleanup?.();
+                hook.cleanup = hook.effect() ?? undefined;
+            }
+        });
+    }
+
+    commitEffects(fiber.child);
+    commitEffects(fiber.sibling);
 }
 
 export function commitWork(fiber: WorkUnit | null | undefined) {

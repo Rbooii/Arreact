@@ -3,7 +3,10 @@ export function createElement(type, props, ...children) {
         type,
         props: {
             ...props,
-            children: children.map((c) => typeof c === "object" ? c : createTextElement(c)),
+            children: children
+                .flat()
+                .filter((c) => c !== null && c !== undefined && typeof c !== "boolean")
+                .map((c) => typeof c === "object" ? c : createTextElement(c)),
         },
     };
 }

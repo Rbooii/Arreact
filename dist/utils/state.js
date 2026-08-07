@@ -5,4 +5,6 @@ export const fiberState = {
     workInProgressRoot: null,
     currentRoot: null,
     deletions: null,
+    effectIndex: 0,
+    pendingRender: false
 };
