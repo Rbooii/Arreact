@@ -1,258 +1,31 @@
-function createElement(type, props, ...children) {
-    return {
-        type,
-        props: {
-            ...props,
-            children: children.map((c) => typeof c === "object" ? c : createTextElement(c)),
-        },
-    };
-}
-function createTextElement(t) {
-    return {
-        type: "TEXT_ELEMENT",
-        props: {
-            nodeValue: t,
-            children: []
-        }
-    };
-}
-function createDOM(obj) {
-    let dom = null;
-    if (obj.type && !(typeof obj.type === "function")) {
-        dom = (obj.type === "TEXT_ELEMENT") ?
-            document.createTextNode("") :
-            document.createElement(obj.type);
-    }
-    if (dom) {
-        updateDOM(dom, { children: [] }, obj.props);
-    }
-    return dom;
-}
-let wipFiber = null;
-let hookIndex = null;
-function UpdateFunctionComponent(fiber) {
-    if (fiber.type && fiber.type instanceof Function) {
-        wipFiber = fiber;
-        hookIndex = 0;
-        wipFiber.hooks = [];
-        const children = [fiber.type(fiber.props)];
-        reconcileChildren(fiber, children);
-    }
-}
-function useState(initial) {
-    const hook = {
-        state: initial,
-        queue: [],
-    };
-    if (wipFiber && hookIndex !== null) {
-        const oldHook = wipFiber.alternate &&
-            wipFiber.alternate.hooks &&
-            wipFiber.alternate.hooks[hookIndex];
-        hook.state = oldHook ? oldHook.state : initial;
-        const actions = oldHook ? oldHook.queue : [];
-        actions.forEach((action) => {
-            hook.state = action(hook.state);
-        });
-        const setState = (action) => {
-            if (currentRoot) {
-                hook.queue.push(typeof action === "function"
-                    ? action
-                    : () => action);
-                workInProgressRoot = {
-                    dom: currentRoot.dom,
-                    props: currentRoot.props,
-                    alternate: currentRoot,
-                };
-                nextUnitOfWork = workInProgressRoot;
-                deletions = [];
-            }
-        };
-        wipFiber.hooks.push(hook);
-        hookIndex++;
-        return [hook.state, setState];
-    }
-    // fallback kalau dipanggil di luar render (jarang kejadian, tapi TS wajib punya return path)
-    return [initial, () => { }];
-}
-function UpdateHostComponent(fiber) {
-    if (!fiber.dom) {
-        fiber.dom = createDOM(fiber);
-    }
-    reconcileChildren(fiber, fiber.props.children);
-}
-function performUnitofWork(fiber) {
-    const isFunc = fiber.type instanceof Function;
-    if (isFunc) {
-        UpdateFunctionComponent(fiber);
-    }
-    else {
-        UpdateHostComponent(fiber);
-    }
-    if (fiber.child) {
-        return fiber.child;
-    }
-    let nextFiber = fiber;
-    while (nextFiber) {
-        if (nextFiber.sibling) {
-            return nextFiber.sibling;
-        }
-        nextFiber = nextFiber.parent;
-    }
-    return null;
-}
-function reconcileChildren(fiber, elements) {
-    let idx = 0;
-    let oldFiber = fiber.alternate && fiber.alternate.child;
-    let prevsib = null;
-    while (idx < elements.length || oldFiber != null) {
-        const e = elements[idx];
-        let newFiber = null;
-        //comparing oldFib to element
-        const sameType = oldFiber && e && e.type === oldFiber.type;
-        if (sameType && oldFiber) {
-            newFiber = {
-                type: oldFiber.type,
-                props: e.props,
-                dom: oldFiber.dom,
-                parent: fiber,
-                alternate: oldFiber,
-                effectTag: "UPDATE",
-            };
-        }
-        if (e && !sameType) {
-            newFiber = {
-                type: e.type,
-                props: e.props,
-                dom: null,
-                parent: fiber,
-                alternate: null,
-                effectTag: "PLACEMENT",
-            };
-        }
-        if (oldFiber && !sameType && deletions) {
-            // delete node
-            oldFiber.effectTag = "DELETION";
-            deletions.push(oldFiber);
-        }
-        if (oldFiber) {
-            oldFiber = oldFiber.sibling;
-        }
-        if (idx === 0) {
-            fiber.child = newFiber;
-        }
-        else if (e && prevsib) {
-            prevsib.sibling = newFiber;
-        }
-        prevsib = newFiber;
-        idx++;
-    }
-}
+import { commitRoot } from "./utils/commit.js";
+import { createElement, createTextElement } from "./utils/element.js";
+import { performUnitofWork } from "./utils/fiber.js";
+import { fiberState } from "./utils/state.js";
+import { useState } from "./hooks/useState.js";
 requestIdleCallback(workLoop);
-let nextUnitOfWork = null;
-let workInProgressRoot = null;
-let currentRoot = null;
-let deletions = null;
-function commitRoot() {
-    deletions?.forEach(commitWork);
-    if (workInProgressRoot && workInProgressRoot.child) {
-        commitWork(workInProgressRoot.child);
-        currentRoot = workInProgressRoot;
-    }
-    workInProgressRoot = null;
-}
-const isEvent = (key) => key.startsWith("on");
-const isProperty = (key) => key !== "children" && !isEvent(key);
-const isNew = (prev, next) => (key) => prev[key] !== next[key];
-const isGone = (prev, next) => (key) => !(key in next);
-function updateDOM(dom, prevProps, nextProps) {
-    Object.keys(prevProps)
-        .filter(isEvent)
-        .filter(key => !(key in nextProps) ||
-        isNew(prevProps, nextProps)(key))
-        .forEach(name => {
-        const eventType = name
-            .toLowerCase()
-            .substring(2);
-        dom.removeEventListener(eventType, prevProps[name]);
-    });
-    // Remove old properties
-    Object.keys(prevProps)
-        .filter(isProperty)
-        .filter(isGone(prevProps, nextProps))
-        .forEach(name => {
-        dom[name] = "";
-    });
-    // Set new or changed properties
-    Object.keys(nextProps)
-        .filter(isProperty)
-        .filter(isNew(prevProps, nextProps))
-        .forEach(name => {
-        dom[name] = nextProps[name];
-    });
-    // Add event listeners
-    Object.keys(nextProps)
-        .filter(isEvent)
-        .filter(isNew(prevProps, nextProps))
-        .forEach(name => {
-        const eventType = name
-            .toLowerCase()
-            .substring(2);
-        dom.addEventListener(eventType, nextProps[name]);
-    });
-}
-function commitDeletion(fiber, domParent) {
-    if (!fiber)
-        return;
-    if (fiber.dom) {
-        domParent.removeChild(fiber.dom);
-    }
-    else {
-        commitDeletion(fiber.child, domParent);
-    }
-}
-function commitWork(fiber) {
-    if (fiber) {
-        let domParentFiber = fiber.parent;
-        while (domParentFiber && !domParentFiber.dom) {
-            domParentFiber = domParentFiber.parent;
-        }
-        if (domParentFiber && domParentFiber.dom) {
-            const domParent = domParentFiber.dom;
-            if (fiber.effectTag === "PLACEMENT" && fiber.dom) {
-                domParent.appendChild(fiber.dom);
-            }
-            else if (fiber.effectTag === "DELETION" && fiber.dom) {
-                commitDeletion(fiber, domParent);
-            }
-            else if (fiber.effectTag === "UPDATE" && fiber.dom && fiber.alternate) {
-                updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
-            }
-        }
-        commitWork(fiber.child);
-        commitWork(fiber.sibling);
-    }
-}
 function workLoop(deadline) {
     let shouldYield = false;
-    while (nextUnitOfWork && !shouldYield) {
-        nextUnitOfWork = performUnitofWork(nextUnitOfWork);
+    while (fiberState.nextUnitOfWork && !shouldYield) {
+        const next = fiberState.nextUnitOfWork;
+        fiberState.nextUnitOfWork = performUnitofWork(next);
         shouldYield = deadline.timeRemaining() < 1;
     }
-    if (!nextUnitOfWork && workInProgressRoot) {
+    if (!fiberState.nextUnitOfWork && fiberState.workInProgressRoot) {
         commitRoot();
     }
     requestIdleCallback(workLoop);
 }
 function render(container, obj) {
-    workInProgressRoot = {
+    fiberState.workInProgressRoot = {
         dom: container,
         props: {
             children: [obj]
         },
-        alternate: currentRoot
+        alternate: fiberState.currentRoot
     };
-    deletions = [];
-    nextUnitOfWork = workInProgressRoot;
+    fiberState.deletions = [];
+    fiberState.nextUnitOfWork = fiberState.workInProgressRoot;
 }
 export const Arreact = {
     createElement,

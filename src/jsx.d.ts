@@ -1,4 +1,4 @@
-import { ArreactElement } from "./arreact";
+import { ArreactElement } from "./utils/types.js";
 
 type ArreactEventHandler<E extends Event, T extends EventTarget> = (
     this: T,
