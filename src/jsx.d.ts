@@ -17,17 +17,17 @@ interface ArreactDOMAttributes<T extends EventTarget> {
 
 // 3. HTML Attributes standar
 interface ArreactHTMLAttributes<T extends EventTarget> extends ArreactDOMAttributes<T> {
-    className?: string; 
+    className?: string;
     id?: string;
     style?: Partial<CSSStyleDeclaration> | string;
-    [key: string]: any; 
+    [key: string]: any;
 }
 declare global {
     namespace JSX {
-        interface Element extends ArreactElement {}
+        interface Element extends ArreactElement { }
 
         interface ElementChildrenAttribute {
-            children: {}; 
+            children: {};
         }
 
         type EventHandler<E extends Event, T extends EventTarget> = (
@@ -48,7 +48,7 @@ declare global {
             className?: string;
             id?: string;
             style?: Partial<CSSStyleDeclaration> | string;
-            [key: string]: any; 
+            [key: string]: any;
         }
 
         interface IntrinsicElements {
@@ -59,14 +59,21 @@ declare global {
             span: HTMLAttributes<HTMLSpanElement>;
             ul: HTMLAttributes<HTMLUListElement>;
             li: HTMLAttributes<HTMLLIElement>;
-            button: HTMLAttributes<HTMLButtonElement> & { 
+            button: HTMLAttributes<HTMLButtonElement> & {
                 disabled?: boolean;
                 type?: 'submit' | 'reset' | 'button';
             };
-            input: HTMLAttributes<HTMLInputElement> & { 
-                type?: string; 
-                value?: string | number; 
+            input: HTMLAttributes<HTMLInputElement> & {
+                type?: string;
+                value?: string | number;
                 placeholder?: string;
+            };
+            img: HTMLAttributes<HTMLImageElement> & {
+                src?: string;
+                alt?: string;
+                width?: number | string;
+                height?: number | string;
+                loading?: 'lazy' | 'eager';
             };
         }
     }

@@ -71,7 +71,10 @@ export function updateDOM(
 export function commitDeletion(fiber: WorkUnit | null | undefined, domParent: Text | HTMLElement) {
     if (!fiber) return;
     if (fiber.dom) {
-        domParent.removeChild(fiber.dom);
+        const actualParent = fiber.dom.parentNode;
+        if (actualParent) {
+            actualParent.removeChild(fiber.dom);
+        }
     } else {
         commitDeletion(fiber.child, domParent);
     }
